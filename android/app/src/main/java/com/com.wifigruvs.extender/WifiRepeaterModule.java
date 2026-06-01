@@ -61,6 +61,8 @@ public class WifiRepeaterModule extends ReactContextBaseJavaModule {
             params.putString("password", service.getPassword());
             params.putString("ipAddress", service.getIpAddress());
             params.putInt("port", service.getPort());
+            params.putBoolean("rooted", service.isDeviceRooted());
+            params.putBoolean("rootNatActive", service.isRootNatEnabled());
             
             ProxyServer proxy = service.getProxyServer();
             if (proxy != null) {
@@ -82,6 +84,8 @@ public class WifiRepeaterModule extends ReactContextBaseJavaModule {
             params.putString("password", "");
             params.putString("ipAddress", "");
             params.putInt("port", 8282);
+            params.putBoolean("rooted", service != null ? service.isDeviceRooted() : false);
+            params.putBoolean("rootNatActive", false);
             params.putDouble("rxSpeed", 0);
             params.putDouble("txSpeed", 0);
             params.putDouble("totalRxBytes", 0);

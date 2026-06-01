@@ -15,6 +15,9 @@ import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
+import java.io.DataOutputStream;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import android.os.Binder;
 import android.os.Build;
 import android.os.Handler;
@@ -59,6 +62,10 @@ public class WifiRepeaterService extends Service {
 
     private ConnectivityManager.NetworkCallback networkCallback = null;
     private Network wifiNetwork = null;
+
+    private String upstreamInterface = "wlan0";
+    private String downstreamInterface = "ap0";
+    private boolean isRootNatEnabled = false;
 
     public class LocalBinder extends Binder {
         public WifiRepeaterService getService() {
@@ -205,6 +212,11 @@ public class WifiRepeaterService extends Service {
                         
                         Log.i(TAG, "Hotspot started. SSID: " + ssid + ", IP: " + ipAddress);
                         
+                        // Root NAT support for zero-config client sharing
+                        if (isDeviceRooted()) {
+                            enableRootNat();
+                        }
+
                         updateNotificationInfo();
                         emitState();
                     } catch (Exception e) {
@@ -271,6 +283,10 @@ public class WifiRepeaterService extends Service {
             proxyServer = null;
         }
 
+        if (isRootNatEnabled) {
+            disableRootNat();
+        }
+
         isHotspotStarted = false;
         ssid = "";
         password = "";
@@ -290,6 +306,7 @@ public class WifiRepeaterService extends Service {
                 }
                 String name = intf.getName().toLowerCase();
                 if (name.contains("ap") || name.contains("p2p") || (name.contains("wlan") && !name.equals("wlan0"))) {
+                    downstreamInterface = intf.getName();
                     String ip = getIPv4Address(intf);
                     if (ip != null) {
                         return ip;
@@ -304,6 +321,9 @@ public class WifiRepeaterService extends Service {
                 }
                 String name = intf.getName().toLowerCase();
                 if (name.contains("wlan")) {
+                    if (name.equals("wlan0")) {
+                        upstreamInterface = intf.getName();
+                    }
                     String ip = getIPv4Address(intf);
                     if (ip != null) {
                         return ip;
@@ -401,6 +421,8 @@ public class WifiRepeaterService extends Service {
         params.putString("password", password);
         params.putString("ipAddress", ipAddress);
         params.putInt("port", PROXY_PORT);
+        params.putBoolean("rooted", isDeviceRooted());
+        params.putBoolean("rootNatActive", isRootNatEnabled);
         
         if (proxyServer != null) {
             params.putDouble("rxSpeed", (double) proxyServer.getRxSpeed());
@@ -442,4 +464,69 @@ public class WifiRepeaterService extends Service {
     public String getIpAddress() { return ipAddress; }
     public int getPort() { return PROXY_PORT; }
     public ProxyServer getProxyServer() { return proxyServer; }
+
+    public boolean isDeviceRooted() {
+        Process p = null;
+        try {
+            p = Runtime.getRuntime().exec("which su");
+            BufferedReader in = new BufferedReader(new InputStreamReader(p.getInputStream()));
+            return in.readLine() != null;
+        } catch (Exception e) {
+            return false;
+        } finally {
+            if (p != null) p.destroy();
+        }
+    }
+
+    private boolean executeRootCmd(String cmd) {
+        Process p = null;
+        DataOutputStream os = null;
+        try {
+            p = Runtime.getRuntime().exec("su");
+            os = new DataOutputStream(p.getOutputStream());
+            os.writeBytes(cmd + "\n");
+            os.writeBytes("exit\n");
+            os.flush();
+            p.waitFor();
+            return p.exitValue() == 0;
+        } catch (Exception e) {
+            Log.e(TAG, "Root execution failed: " + e.getMessage());
+            return false;
+        } finally {
+            if (os != null) {
+                try { os.close(); } catch (Exception ignored) {}
+            }
+            if (p != null) {
+                p.destroy();
+            }
+        }
+    }
+
+    private void enableRootNat() {
+        Log.i(TAG, "Attempting rooted NAT configuration...");
+        String cmd = "echo 1 > /proc/sys/net/ipv4/ip_forward && " +
+                     "iptables -F && " +
+                     "iptables -t nat -F && " +
+                     "iptables -t nat -A POSTROUTING -o " + upstreamInterface + " -j MASQUERADE && " +
+                     "iptables -A FORWARD -i " + downstreamInterface + " -o " + upstreamInterface + " -j ACCEPT && " +
+                     "iptables -A FORWARD -i " + upstreamInterface + " -o " + downstreamInterface + " -m state --state RELATED,ESTABLISHED -j ACCEPT";
+        boolean success = executeRootCmd(cmd);
+        if (success) {
+            isRootNatEnabled = true;
+            Log.i(TAG, "Rooted NAT forwarding enabled successfully between " + downstreamInterface + " and " + upstreamInterface);
+        } else {
+            Log.w(TAG, "Failed to configure rooted NAT forwarding.");
+        }
+    }
+
+    private void disableRootNat() {
+        Log.i(TAG, "Disabling rooted NAT configuration...");
+        String cmd = "echo 0 > /proc/sys/net/ipv4/ip_forward && " +
+                     "iptables -F && " +
+                     "iptables -t nat -F";
+        executeRootCmd(cmd);
+        isRootNatEnabled = false;
+    }
+
+    public boolean isRootNatEnabled() { return isRootNatEnabled; }
 }

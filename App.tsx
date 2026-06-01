@@ -120,6 +120,10 @@ function MainContainer() {
   // Client registry
   const [clients, setClients] = useState<ClientDevice[]>([]);
 
+  // Root state info
+  const [rooted, setRooted] = useState(false);
+  const [rootNatActive, setRootNatActive] = useState(false);
+
   // Ripple animations for active state
   const scale1 = useRef(new Animated.Value(1)).current;
   const opacity1 = useRef(new Animated.Value(1)).current;
@@ -183,6 +187,9 @@ function MainContainer() {
     setTxSpeed(state.txSpeed || 0);
     setTotalRx(state.totalRxBytes || 0);
     setTotalTx(state.totalTxBytes || 0);
+    
+    setRooted(!!state.rooted);
+    setRootNatActive(!!state.rootNatActive);
     
     if (state.active) {
       setLoading(false);
@@ -498,7 +505,18 @@ function MainContainer() {
         )}
 
         {/* Instructions Card */}
-        {active && (
+        {active && rootNatActive && (
+          <View style={styles.successCard}>
+            <Text style={styles.successCardEmoji}>🚀</Text>
+            <Text style={styles.successCardTitle}>Root NAT Active (Zero-Config Mode)</Text>
+            <Text style={styles.successCardText}>
+              Internet sharing is running automatically at the system kernel level. Other devices can scan your QR code above to connect, and they will get internet instantly! No manual settings, proxy configurations, or script runs are required.
+            </Text>
+          </View>
+        )}
+
+        {/* Instructions Card */}
+        {active && !rootNatActive && (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Manual Proxy Configuration</Text>
             <Text style={styles.cardWarning}>
@@ -991,5 +1009,30 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 14,
     fontWeight: '700',
+  },
+  successCard: {
+    backgroundColor: '#0c1d1a',
+    borderRadius: 18,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#10b981',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  successCardEmoji: {
+    fontSize: 32,
+    marginBottom: 10,
+  },
+  successCardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#10b981',
+    marginBottom: 8,
+  },
+  successCardText: {
+    fontSize: 13,
+    color: '#a7f3d0',
+    textAlign: 'center',
+    lineHeight: 18,
   },
 });
