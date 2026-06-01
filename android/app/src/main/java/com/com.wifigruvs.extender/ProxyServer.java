@@ -174,6 +174,32 @@ public class ProxyServer {
             String host = null;
             int remotePort = 80;
 
+            // Resolve host from header lines (to check if it targets the local proxy server IP)
+            for (String line : lines) {
+                if (line.toLowerCase().startsWith("host:")) {
+                    String hostValue = line.substring(5).trim();
+                    String[] hostPort = hostValue.split(":");
+                    host = hostPort[0];
+                    break;
+                }
+            }
+
+            String lohsIp = "";
+            WifiRepeaterService service = WifiRepeaterService.getInstance();
+            if (service != null) {
+                lohsIp = service.getIpAddress();
+            }
+
+            boolean isLocalRequest = url.startsWith("/");
+            if (host != null && !lohsIp.isEmpty() && (host.equals(lohsIp) || host.equals("127.0.0.1") || host.equals("localhost"))) {
+                isLocalRequest = true;
+            }
+
+            if (isLocalRequest && !method.equalsIgnoreCase("CONNECT")) {
+                handleLocalRequest(clientSocket, url, headerStr);
+                return;
+            }
+
             if (method.equalsIgnoreCase("CONNECT")) {
                 // HTTPS Connect Tunnel
                 String[] hostPort = url.split(":");
@@ -337,5 +363,280 @@ public class ProxyServer {
         } catch (Exception e) {
             return "[]";
         }
+    }
+    }
+
+    private void handleLocalRequest(Socket clientSocket, String url, String headerStr) {
+        OutputStream out = null;
+        try {
+            out = clientSocket.getOutputStream();
+            String path = url;
+            if (url.startsWith("http://") || url.startsWith("https://")) {
+                try {
+                    URL parsed = new URL(url);
+                    path = parsed.getPath();
+                } catch (Exception e) {
+                    int pathStart = url.indexOf("/", 8); // after http:// or https://
+                    if (pathStart != -1) {
+                        path = url.substring(pathStart);
+                    } else {
+                        path = "/";
+                    }
+                }
+            }
+
+            int qIndex = path.indexOf("?");
+            if (qIndex != -1) {
+                path = path.substring(0, qIndex);
+            }
+
+            if (path.equals("/mobileconfig")) {
+                serveMobileConfig(out);
+            } else {
+                serveSetupPage(out, headerStr);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error handling local request", e);
+        } finally {
+            try { clientSocket.close(); } catch (IOException ignored) {}
+        }
+    }
+
+    private void serveMobileConfig(OutputStream out) throws IOException {
+        String ssid = "";
+        String password = "";
+        WifiRepeaterService service = WifiRepeaterService.getInstance();
+        if (service != null) {
+            ssid = service.getSsid();
+            password = service.getPassword();
+        }
+        if (ssid == null) ssid = "";
+        if (password == null) password = "";
+
+        if (ssid.startsWith("\"") && ssid.endsWith("\"") && ssid.length() > 1) {
+            ssid = ssid.substring(1, ssid.length() - 1);
+        }
+
+        String config = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+                "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n" +
+                "<plist version=\"1.0\">\n" +
+                "<dict>\n" +
+                "    <key>ConsentText</key>\n" +
+                "    <dict>\n" +
+                "        <key>default</key>\n" +
+                "        <key>This profile configures your Wi-Fi network and proxy settings for the Wifi Gruvs Extender.</key>\n" +
+                "    </dict>\n" +
+                "    <key>PayloadContent</key>\n" +
+                "    <array>\n" +
+                "        <dict>\n" +
+                "            <key>AutoJoin</key>\n" +
+                "            <true/>\n" +
+                "            <key>EncryptionType</key>\n" +
+                "            <string>WPA</string>\n" +
+                "            <key>HIDDEN</key>\n" +
+                "            <false/>\n" +
+                "            <key>PayloadDescription</key>
+                "            <string>Configures Wi-Fi settings</string>\n" +
+                "            <key>PayloadDisplayName</key>\n" +
+                "            <string>Wifi Gruvs Hotspot</string>\n" +
+                "            <key>PayloadIdentifier</key>\n" +
+                "            <string>com.wifigruvs.extender.wifi1</string>\n" +
+                "            <key>PayloadType</key>\n" +
+                "            <string>com.apple.wifi.managed</string>\n" +
+                "            <key>PayloadUUID</key>\n" +
+                "            <string>a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d</string>\n" +
+                "            <key>PayloadVersion</key>\n" +
+                "            <integer>1</integer>\n" +
+                "            <key>ProxyServer</key>\n" +
+                "            <string>192.168.49.1</string>\n" +
+                "            <key>ProxyServerPort</key>\n" +
+                "            <integer>8282</integer>\n" +
+                "            <key>ProxyType</key>\n" +
+                "            <string>Manual</string>\n" +
+                "            <key>SSID_STR</key>\n" +
+                "            <string>" + ssid + "</string>\n" +
+                "            <key>Password</key>\n" +
+                "            <string>" + password + "</string>\n" +
+                "        </dict>\n" +
+                "    </array>\n" +
+                "    <key>PayloadDisplayName</key>\n" +
+                "    <string>Wifi Gruvs Configuration</string>\n" +
+                "    <key>PayloadIdentifier</key>\n" +
+                "    <string>com.wifigruvs.extender</string>\n" +
+                "    <key>PayloadRemovalDisallowed</key>\n" +
+                "    <false/>\n" +
+                "    <key>PayloadType</key>\n" +
+                "    <string>Configuration</string>\n" +
+                "    <key>PayloadUUID</key>\n" +
+                "    <string>f1e2d3c4-b5a6-9f8e-7d6c-5b4a3f2e1d0c</string>\n" +
+                "    <key>PayloadVersion</key>\n" +
+                "    <integer>1</integer>\n" +
+                "</dict>\n" +
+                "</plist>";
+
+        byte[] body = config.getBytes("UTF-8");
+        String responseHeaders = "HTTP/1.1 200 OK\r\n" +
+                "Content-Type: application/x-apple-aspen-config\r\n" +
+                "Content-Length: " + body.length + "\r\n" +
+                "Content-Disposition: attachment; filename=\"wifi-repeater.mobileconfig\"\r\n" +
+                "Connection: close\r\n\r\n";
+
+        out.write(responseHeaders.getBytes("ISO-8859-1"));
+        out.write(body);
+        out.flush();
+    }
+
+    private void serveSetupPage(OutputStream out, String headerStr) throws IOException {
+        boolean isApple = headerStr.toLowerCase().contains("iphone") || 
+                         headerStr.toLowerCase().contains("ipad") || 
+                         headerStr.toLowerCase().contains("macintosh") || 
+                         headerStr.toLowerCase().contains("os x");
+
+        String ssid = "";
+        String password = "";
+        WifiRepeaterService service = WifiRepeaterService.getInstance();
+        if (service != null) {
+            ssid = service.getSsid();
+            password = service.getPassword();
+        }
+        if (ssid == null) ssid = "";
+        if (password == null) password = "";
+        
+        if (ssid.startsWith("\"") && ssid.endsWith("\"") && ssid.length() > 1) {
+            ssid = ssid.substring(1, ssid.length() - 1);
+        }
+
+        String html = "<!DOCTYPE html>\n" +
+                "<html>\n" +
+                "<head>\n" +
+                "    <meta charset=\"utf-8\">\n" +
+                "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
+                "    <title>Wifi Gruvs - Setup Guide</title>\n" +
+                "    <style>\n" +
+                "        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #070a13; color: #ffffff; padding: 20px; margin: 0; line-height: 1.5; }\n" +
+                "        .container { max-width: 600px; margin: 0 auto; background: #131b2e; border-radius: 16px; padding: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); border: 1px solid #1e293b; }\n" +
+                "        h1 { color: #6366f1; font-size: 24px; font-weight: 800; margin-top: 0; border-bottom: 2px solid #1e293b; padding-bottom: 12px; }\n" +
+                "        .btn { display: inline-block; background: #4f46e5; color: #ffffff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 16px; text-align: center; margin: 15px 0; border: none; cursor: pointer; transition: background 0.2s; }\n" +
+                "        .btn:hover { background: #6366f1; }\n" +
+                "        .card { background: #0c111d; border-radius: 12px; padding: 16px; margin: 15px 0; border: 1px solid #1e293b; }\n" +
+                "        .label { font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 4px; }\n" +
+                "        .value { font-size: 18px; font-weight: bold; color: #ffffff; }\n" +
+                "        .instructions { margin-top: 20px; }\n" +
+                "        .step { margin-bottom: 15px; padding-left: 30px; position: relative; }\n" +
+                "        .step-num { position: absolute; left: 0; top: 0; background: #4f46e5; width: 22px; height: 22px; border-radius: 11px; text-align: center; font-size: 13px; font-weight: bold; line-height: 22px; }\n" +
+                "        .highlight { color: #10b981; font-weight: bold; }\n" +
+                "        .tab-btn { background: #1e293b; color: #64748b; padding: 8px 16px; border: none; border-radius: 6px; font-weight: bold; margin-right: 8px; cursor: pointer; }\n" +
+                "        .tab-btn.active { background: #4f46e5; color: #ffffff; }\n" +
+                "        .tab-content { display: none; }\n" +
+                "        .tab-content.active { display: block; }\n" +
+                "    </style>\n" +
+                "</head>\n" +
+                "<body>\n" +
+                "<div class=\"container\">\n" +
+                "    <h1>⚡ Wifi Gruvs setup portal</h1>\n" +
+                "    <p>You have successfully connected to the repeater hotspot. Follow the steps below to enable internet access.</p>\n" +
+                "\n" +
+                "    <div class=\"card\">\n" +
+                "        <div class=\"label\">Hotspot Network Name (SSID)</div>\n" +
+                "        <div class=\"value\">" + ssid + "</div>\n" +
+                "    </div>\n" +
+                "\n" +
+                "    <div class=\"instructions\">\n" +
+                (isApple ? 
+                "        <h2>🍏 Auto-configure for Apple devices (iOS / macOS)</h2>\n" +
+                "        <p>Click the button below to download the Wi-Fi Auto-Configuration Profile. It will set up your connection and proxy settings automatically!</p>\n" +
+                "        <a href=\"/mobileconfig\" class=\"btn\">Install Auto-Config Profile</a>\n" +
+                "        <div class=\"step\">\n" +
+                "            <div class=\"step-num\">1</div>\n" +
+                "            Tap the button above. iOS will show a prompt saying \"Profile Downloaded\".\n" +
+                "        </div>\n" +
+                "        <div class=\"step\">\n" +
+                "            <div class=\"step-num\">2</div>\n" +
+                "            Open your device <b>Settings</b>. You will see a new item at the top called <b>Profile Downloaded</b> (or go to General -> VPN & Device Management).\n" +
+                "        </div>\n" +
+                "        <div class=\"step\">\n" +
+                "            <div class=\"step-num\">3</div>\n" +
+                "            Tap it, click <b>Install</b> in the top right, enter your passcode, and confirm installation. Your internet will begin working immediately!\n" +
+                "        </div>\n" :
+                "        <h2>Manual Proxy Setup</h2>\n" +
+                "        <div style=\"margin-bottom: 20px;\">\n" +
+                "            <button class=\"tab-btn active\" onclick=\"openTab('windows')\">Windows</button>\n" +
+                "            <button class=\"tab-btn\" onclick=\"openTab('android')\">Android</button>\n" +
+                "        </div>\n" +
+                "\n" +
+                "        <div id=\"windows\" class=\"tab-content active\">\n" +
+                "            <div class=\"step\">\n" +
+                "                <div class=\"step-num\">1</div>\n" +
+                "                Open Windows <b>Settings</b> and go to <b>Network & Internet</b>.\n" +
+                "            </div>\n" +
+                "            <div class=\"step\">\n" +
+                "                <div class=\"step-num\">2</div>\n" +
+                "                Select the <b>Proxy</b> tab from the left sidebar.\n" +
+                "            </div>\n" +
+                "            <div class=\"step\">\n" +
+                "                <div class=\"step-num\">3</div>\n" +
+                "                Under <i>Manual proxy setup</i>, toggle <b>Use a proxy server</b> to <span class=\"highlight\">ON</span>.\n" +
+                "            </div>\n" +
+                "            <div class=\"step\">\n" +
+                "                <div class=\"step-num\">4</div>\n" +
+                "                Enter these proxy parameters and click <b>Save</b>:\n" +
+                "                <div class=\"card\" style=\"margin-top: 8px; padding: 10px;\">\n" +
+                "                    Address: <span class=\"highlight\">192.168.49.1</span><br>\n" +
+                "                    Port: <span class=\"highlight\">8282</span>\n" +
+                "                </div>\n" +
+                "            </div>\n" +
+                "        </div>\n" +
+                "\n" +
+                "        <div id=\"android\" class=\"tab-content\">\n" +
+                "            <div class=\"step\">\n" +
+                "                <div class=\"step-num\">1</div>\n" +
+                "                Open your device <b>Wi-Fi Settings</b>.\n" +
+                "            </div>\n" +
+                "            <div class=\"step\">\n" +
+                "                <div class=\"step-num\">2</div>\n" +
+                "                Tap the <b>cog icon</b> or long-press your connected Wi-Fi network and select <b>Modify Network</b>.\n" +
+                "            </div>\n" +
+                "            <div class=\"step\">\n" +
+                "                <div class=\"step-num\">3</div>\n" +
+                "                Expand the <b>Advanced options</b> dropdown.\n" +
+                "            </div>\n" +
+                "            <div class=\"step\">\n" +
+                "                <div class=\"step-num\">4</div>\n" +
+                "                Set the Proxy dropdown to <span class=\"highlight\">Manual</span> and enter:\n" +
+                "                <div class=\"card\" style=\"margin-top: 8px; padding: 10px;\">\n" +
+                "                    Proxy Host Name: <span class=\"highlight\">192.168.49.1</span><br>\n" +
+                "                    Proxy Port: <span class=\"highlight\">8282</span>\n" +
+                "                </div>\n" +
+                "            </div>\n" +
+                "        </div>\n") +
+                "    </div>\n" +
+                "</div>\n" +
+                "<script>\n" +
+                "    function openTab(tabId) {\n" +
+                "        var i;\n" +
+                "        var x = document.getElementsByClassName(\"tab-content\");\n" +
+                "        for (i = 0; i < x.length; i++) {\n" +
+                "            x[i].classList.remove(\"active\");\n" +
+                "        }\n" +
+                "        var buttons = document.getElementsByClassName(\"tab-btn\");\n" +
+                "        for (i = 0; i < buttons.length; i++) {\n" +
+                "            buttons[i].classList.remove(\"active\");\n" +
+                "        }\n" +
+                "        document.getElementById(tabId).classList.add(\"active\");\n" +
+                "        event.currentTarget.classList.add(\"active\");\n" +
+                "    }\n" +
+                "</script>\n" +
+                "</body>\n" +
+                "</html>";
+
+        byte[] body = html.getBytes("UTF-8");
+        String responseHeaders = "HTTP/1.1 200 OK\r\n" +
+                "Content-Type: text/html; charset=utf-8\r\n" +
+                "Content-Length: " + body.length + "\r\n" +
+                "Connection: close\r\n\r\n";
+
+        out.write(responseHeaders.getBytes("ISO-8859-1"));
+        out.write(body);
+        out.flush();
     }
 }

@@ -15,6 +15,8 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+// @ts-ignore
+import qrcode from 'qrcode-generator';
 
 const { WifiRepeater } = NativeModules;
 const WifiRepeaterEmitter = WifiRepeater ? new NativeEventEmitter(WifiRepeater) : null;
@@ -23,6 +25,69 @@ interface ClientDevice {
   ip: string;
   totalBytes: number;
   lastSeen: number;
+}
+
+interface WiFiQRCodeProps {
+  value: string;
+  size?: number;
+}
+
+function WiFiQRCode({ value, size = 160 }: WiFiQRCodeProps) {
+  try {
+    const qr = qrcode(0, 'M');
+    qr.addData(value);
+    qr.make();
+    
+    const cells = qr.getModuleCount();
+    const cellSize = Math.floor(size / cells);
+    const actualSize = cellSize * cells;
+    
+    const rows = [];
+    for (let r = 0; r < cells; r++) {
+      const cols = [];
+      for (let c = 0; c < cells; c++) {
+        const isDark = qr.isDark(r, c);
+        cols.push(
+          <View
+            key={`c-${c}`}
+            style={{
+              width: cellSize,
+              height: cellSize,
+              backgroundColor: isDark ? '#ffffff' : '#070a13',
+            }}
+          />
+        );
+      }
+      rows.push(
+        <View key={`r-${r}`} style={{ flexDirection: 'row' }}>
+          {cols}
+        </View>
+      );
+    }
+    
+    return (
+      <View style={{
+        padding: 10,
+        backgroundColor: '#070a13',
+        borderRadius: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: actualSize + 20,
+        height: actualSize + 20,
+        borderWidth: 1,
+        borderColor: '#1e293b',
+      }}>
+        {rows}
+      </View>
+    );
+  } catch (e) {
+    console.error('Failed to generate QR code', e);
+    return (
+      <View style={{ width: size, height: size, backgroundColor: '#070a13', justifyContent: 'center', alignItems: 'center' }}>
+        <Text style={{ color: '#64748b', fontSize: 12 }}>QR Code Error</Text>
+      </View>
+    );
+  }
 }
 
 export default function App() {
@@ -410,6 +475,17 @@ function MainContainer() {
                 <Text style={styles.copyBtnText}>Copy</Text>
               </TouchableOpacity>
             </View>
+
+            <View style={styles.divider} />
+
+            <View style={styles.qrSection}>
+              <Text style={styles.qrTitle}>Scan to Connect Instantly</Text>
+              {ssid && password ? (
+                <WiFiQRCode value={`WIFI:S:${ssid.startsWith('"') && ssid.endsWith('"') ? ssid.slice(1, -1) : ssid};T:WPA;P:${password};;`} size={160} />
+              ) : (
+                <ActivityIndicator size="small" color="#6366f1" />
+              )}
+            </View>
           </View>
         )}
 
@@ -450,6 +526,20 @@ function MainContainer() {
                   <Text style={styles.copyBtnTextMini}>Copy Port</Text>
                 </TouchableOpacity>
               </View>
+            </View>
+
+            <View style={styles.divider} />
+
+            <View style={styles.appleSection}>
+              <Text style={styles.appleTitle}>🍏 Apple (iOS / macOS) Auto-Setup</Text>
+              <Text style={styles.appleText}>
+                Connect to the Wi-Fi first, then scan this QR code to download the Wi-Fi profile and connect automatically:
+              </Text>
+              {ipAddress ? (
+                <WiFiQRCode value={`http://${ipAddress}:${port}/setup`} size={150} />
+              ) : (
+                <ActivityIndicator size="small" color="#6366f1" />
+              )}
             </View>
           </View>
         )}
@@ -837,5 +927,35 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6366f1',
     fontWeight: '600',
+  },
+  qrSection: {
+    alignItems: 'center',
+    marginTop: 15,
+  },
+  qrTitle: {
+    fontSize: 13,
+    color: '#94a3b8',
+    fontWeight: '700',
+    marginBottom: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  appleSection: {
+    alignItems: 'center',
+    marginTop: 15,
+  },
+  appleTitle: {
+    fontSize: 14,
+    color: '#ffffff',
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  appleText: {
+    fontSize: 12,
+    color: '#94a3b8',
+    textAlign: 'center',
+    marginBottom: 12,
+    lineHeight: 16,
+    paddingHorizontal: 10,
   },
 });
