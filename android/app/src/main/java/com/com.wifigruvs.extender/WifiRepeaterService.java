@@ -11,6 +11,10 @@ import android.content.pm.ServiceInfo;
 import java.net.NetworkInterface;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiManager;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
+import android.net.NetworkRequest;
 import android.os.Binder;
 import android.os.Build;
 import android.os.Handler;
@@ -53,6 +57,9 @@ public class WifiRepeaterService extends Service {
     private ScheduledExecutorService updateScheduler;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
+    private ConnectivityManager.NetworkCallback networkCallback = null;
+    private Network wifiNetwork = null;
+
     public class LocalBinder extends Binder {
         public WifiRepeaterService getService() {
             return WifiRepeaterService.this;
@@ -65,6 +72,10 @@ public class WifiRepeaterService extends Service {
         return instance;
     }
 
+    public static Network getActiveWifiNetwork() {
+        return instance != null ? instance.wifiNetwork : null;
+    }
+
     public static void setReactContext(ReactApplicationContext context) {
         reactContext = context;
     }
@@ -75,6 +86,36 @@ public class WifiRepeaterService extends Service {
         instance = this;
         wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
         createNotificationChannel();
+
+        // Track active Wi-Fi internet network for routing proxy connections
+        try {
+            ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (cm != null) {
+                NetworkRequest request = new NetworkRequest.Builder()
+                        .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+                        .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                        .build();
+                networkCallback = new ConnectivityManager.NetworkCallback() {
+                    @Override
+                    public void onAvailable(Network network) {
+                        super.onAvailable(network);
+                        wifiNetwork = network;
+                        Log.i(TAG, "Active Wi-Fi Internet network available: " + network);
+                    }
+                    @Override
+                    public void onLost(Network network) {
+                        super.onLost(network);
+                        if (wifiNetwork != null && wifiNetwork.equals(network)) {
+                            wifiNetwork = null;
+                        }
+                        Log.i(TAG, "Active Wi-Fi Internet network lost: " + network);
+                    }
+                };
+                cm.registerNetworkCallback(request, networkCallback);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to register network callback", e);
+        }
     }
 
     @Override
@@ -108,6 +149,19 @@ public class WifiRepeaterService extends Service {
             updateScheduler.shutdownNow();
         }
 
+        if (networkCallback != null) {
+            try {
+                ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+                if (cm != null) {
+                    cm.unregisterNetworkCallback(networkCallback);
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to unregister network callback", e);
+            }
+            networkCallback = null;
+        }
+
+        wifiNetwork = null;
         instance = null;
         super.onDestroy();
     }

@@ -1,6 +1,8 @@
 package com.wifigruvs.extender;
 
 import android.util.Log;
+import android.net.Network;
+import android.os.Build;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -206,8 +208,19 @@ public class ProxyServer {
                 host = hostPort[0];
                 remotePort = hostPort.length > 1 ? Integer.parseInt(hostPort[1]) : 443;
 
+                InetAddress address;
+                Network net = WifiRepeaterService.getActiveWifiNetwork();
+                if (net != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    address = net.getByName(host);
+                } else {
+                    address = InetAddress.getByName(host);
+                }
+
                 remoteSocket = new Socket();
-                remoteSocket.connect(new InetSocketAddress(host, remotePort), 10000); // 10s connection timeout
+                if (net != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    net.bindSocket(remoteSocket);
+                }
+                remoteSocket.connect(new InetSocketAddress(address, remotePort), 10000); // 10s connection timeout
                 remoteSocket.setSoTimeout(30000);
 
                 clientOut.write("HTTP/1.1 200 Connection Established\r\n\r\n".getBytes());
@@ -241,8 +254,19 @@ public class ProxyServer {
                     return;
                 }
 
+                InetAddress address;
+                Network net = WifiRepeaterService.getActiveWifiNetwork();
+                if (net != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    address = net.getByName(host);
+                } else {
+                    address = InetAddress.getByName(host);
+                }
+
                 remoteSocket = new Socket();
-                remoteSocket.connect(new InetSocketAddress(host, remotePort), 10000);
+                if (net != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    net.bindSocket(remoteSocket);
+                }
+                remoteSocket.connect(new InetSocketAddress(address, remotePort), 10000);
                 remoteSocket.setSoTimeout(30000);
 
                 // Forward headers
