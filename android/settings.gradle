@@ -1,0 +1,15 @@
+pluginManagement {
+    includeBuild("../node_modules/@react-native/gradle-plugin")
+    repositories {
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+plugins {
+    id("com.facebook.react.settings")
+    id("org.gradle.toolchains.foojay-resolver-convention") version "0.9.0"
+}
+extensions.configure(com.facebook.react.ReactSettingsExtension){ ex -> ex.autolinkLibrariesFromCommand() }
+rootProject.name = 'com.wifigruvs.extender'
+include ':app'
+includeBuild('../node_modules/@react-native/gradle-plugin')
