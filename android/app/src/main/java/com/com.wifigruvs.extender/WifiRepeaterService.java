@@ -8,7 +8,7 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
-import android.net.NetworkInterface;
+import java.net.NetworkInterface;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiManager;
 import android.os.Binder;
@@ -176,8 +176,8 @@ public class WifiRepeaterService extends Service {
                     Log.e(TAG, "LocalOnlyHotspot failed to start: " + reason);
                     isHotspotStarted = false;
                     String errorText = "Hotspot start failed (Code: " + reason + ")";
-                    if (reason == WifiManager.LocalOnlyHotspotCallback.ERROR_NO_CHANNEL_OF_SUITABLE_BAND) {
-                        errorText = "No suitable Wi-Fi band available";
+                    if (reason == WifiManager.LocalOnlyHotspotCallback.ERROR_NO_CHANNEL) {
+                        errorText = "No suitable Wi-Fi channel available";
                     }
                     updateNotificationError(errorText);
                     emitEvent("onExtenderError", errorText);
