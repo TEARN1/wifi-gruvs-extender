@@ -93,6 +93,25 @@ public class WifiRepeaterModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
+    public void openTetherSettings() {
+        try {
+            Intent intent = new Intent();
+            intent.setAction("android.settings.TETHER_SETTINGS");
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            reactContext.startActivity(intent);
+        } catch (Exception e) {
+            try {
+                Intent intent = new Intent();
+                intent.setClassName("com.android.settings", "com.android.settings.TetherSettings");
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                reactContext.startActivity(intent);
+            } catch (Exception ex) {
+                // Failed to open settings screen
+            }
+        }
+    }
+
+    @ReactMethod
     public void addListener(String eventName) {
         // Keep: Required for RN built-in Event Emitter Calls.
     }

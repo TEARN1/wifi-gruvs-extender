@@ -364,7 +364,6 @@ public class ProxyServer {
             return "[]";
         }
     }
-    }
 
     private void handleLocalRequest(Socket clientSocket, String url, String headerStr) {
         OutputStream out = null;
@@ -392,6 +391,10 @@ public class ProxyServer {
 
             if (path.equals("/mobileconfig")) {
                 serveMobileConfig(out);
+            } else if (path.equals("/enable-proxy.bat")) {
+                serveEnableProxyBat(out);
+            } else if (path.equals("/disable-proxy.bat")) {
+                serveDisableProxyBat(out);
             } else {
                 serveSetupPage(out, headerStr);
             }
@@ -435,7 +438,7 @@ public class ProxyServer {
                 "            <string>WPA</string>\n" +
                 "            <key>HIDDEN</key>\n" +
                 "            <false/>\n" +
-                "            <key>PayloadDescription</key>
+                "            <key>PayloadDescription</key>\n" +
                 "            <string>Configures Wi-Fi settings</string>\n" +
                 "            <key>PayloadDisplayName</key>\n" +
                 "            <string>Wifi Gruvs Hotspot</string>\n" +
@@ -481,6 +484,52 @@ public class ProxyServer {
                 "Content-Disposition: attachment; filename=\"wifi-repeater.mobileconfig\"\r\n" +
                 "Connection: close\r\n\r\n";
 
+        out.write(responseHeaders.getBytes("ISO-8859-1"));
+        out.write(body);
+        out.flush();
+    }
+
+    private void serveEnableProxyBat(OutputStream out) throws IOException {
+        String script = "@echo off\r\n" +
+                "echo ==========================================\r\n" +
+                "echo  Wifi Gruvs - Auto Proxy Enable\r\n" +
+                "echo ==========================================\r\n" +
+                "echo Configuring Wi-Fi proxy server settings...\r\n" +
+                "reg add \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\" /v ProxyEnable /t REG_DWORD /d 1 /f >nul\r\n" +
+                "reg add \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\" /v ProxyServer /t REG_SZ /d \"192.168.49.1:8282\" /f >nul\r\n" +
+                "echo.\r\n" +
+                "echo Proxy configuration applied successfully!\r\n" +
+                "echo You can now use your internet connection.\r\n" +
+                "echo Keep this window open or close it. Press any key to exit.\r\n" +
+                "pause >nul\r\n";
+        byte[] body = script.getBytes("UTF-8");
+        String responseHeaders = "HTTP/1.1 200 OK\r\n" +
+                "Content-Type: application/octet-stream\r\n" +
+                "Content-Length: " + body.length + "\r\n" +
+                "Content-Disposition: attachment; filename=\"enable-proxy.bat\"\r\n" +
+                "Connection: close\r\n\r\n";
+        out.write(responseHeaders.getBytes("ISO-8859-1"));
+        out.write(body);
+        out.flush();
+    }
+
+    private void serveDisableProxyBat(OutputStream out) throws IOException {
+        String script = "@echo off\r\n" +
+                "echo ==========================================\r\n" +
+                "echo  Wifi Gruvs - Auto Proxy Disable\r\n" +
+                "echo ==========================================\r\n" +
+                "echo Resetting Wi-Fi proxy settings...\r\n" +
+                "reg add \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\" /v ProxyEnable /t REG_DWORD /d 0 /f >nul\r\n" +
+                "echo.\r\n" +
+                "echo Proxy settings reset to normal!\r\n" +
+                "echo Press any key to exit.\r\n" +
+                "pause >nul\r\n";
+        byte[] body = script.getBytes("UTF-8");
+        String responseHeaders = "HTTP/1.1 200 OK\r\n" +
+                "Content-Type: application/octet-stream\r\n" +
+                "Content-Length: " + body.length + "\r\n" +
+                "Content-Disposition: attachment; filename=\"disable-proxy.bat\"\r\n" +
+                "Connection: close\r\n\r\n";
         out.write(responseHeaders.getBytes("ISO-8859-1"));
         out.write(body);
         out.flush();
@@ -565,6 +614,12 @@ public class ProxyServer {
                 "        </div>\n" +
                 "\n" +
                 "        <div id=\"windows\" class=\"tab-content active\">\n" +
+                "            <h3>🍏 Option A: 1-Click Auto-Configuration (Recommended)</h3>\n" +
+                "            <p>Download and run this quick script to automatically configure your Wi-Fi proxy settings:</p>\n" +
+                "            <a href=\"/enable-proxy.bat\" class=\"btn\">Download Auto-Proxy Script</a>\n" +
+                "            <p style=\"font-size: 12px; color: #64748b;\">Note: To turn the proxy off later when you disconnect, download and run the <a href=\"/disable-proxy.bat\" style=\"color: #6366f1; text-decoration: underline;\">Disable Proxy Script</a>.</p>\n" +
+                "            <br>\n" +
+                "            <h3>🔧 Option B: Manual Configuration</h3>\n" +
                 "            <div class=\"step\">\n" +
                 "                <div class=\"step-num\">1</div>\n" +
                 "                Open Windows <b>Settings</b> and go to <b>Network & Internet</b>.\n" +

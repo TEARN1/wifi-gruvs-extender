@@ -309,6 +309,14 @@ function MainContainer() {
     return true;
   };
 
+  const openTetherSettings = () => {
+    if (WifiRepeater && WifiRepeater.openTetherSettings) {
+      WifiRepeater.openTetherSettings();
+    } else {
+      Alert.alert('Unavailable', 'Settings shortcut is not supported on this platform.');
+    }
+  };
+
   const toggleExtender = async () => {
     if (!WifiRepeater) {
       Alert.alert('Unavailable', 'Wi-Fi Repeater module is not available on this platform.');
@@ -578,15 +586,29 @@ function MainContainer() {
 
         {/* Device Information (Android requirement details) */}
         {!active && (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Option A: Zero-Config Wi-Fi Sharing</Text>
+            <Text style={styles.cardInfo}>
+              Many modern devices allow you to share your active Wi-Fi connection automatically via the system hotspot. Connected clients will get internet immediately without any proxy configuration!
+            </Text>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={openTetherSettings}
+              style={styles.actionButton}>
+              <Text style={styles.actionButtonText}>⚙️ Open System Hotspot Settings</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {!active && (
           <View style={styles.infoCard}>
-            <Text style={styles.infoCardTitle}>How it works</Text>
+            <Text style={styles.infoCardTitle}>Option B: Local Hotspot & Proxy (Universal)</Text>
             <Text style={styles.infoCardText}>
-              This app creates a Local Only Hotspot. By routing clients' traffic through an internal HTTP/HTTPS proxy server running on your phone, other devices can share your active Wi-Fi connection.
+              If your phone disables Wi-Fi when activating system hotspot, tap the lightning ⚡ button above. This starts a rootless Wi-Fi repeater utilizing a local HTTP proxy server.
             </Text>
             <View style={styles.infoSpecs}>
-              <Text style={styles.infoSpecItem}>• No root access required</Text>
-              <Text style={styles.infoSpecItem}>• Background running supported</Text>
-              <Text style={styles.infoSpecItem}>• Keeps your cellular data safe</Text>
+              <Text style={styles.infoSpecItem}>• Requires setting proxy on client (e.g. via QR code)</Text>
+              <Text style={styles.infoSpecItem}>• Safe, stable and runs fully rootless</Text>
             </View>
           </View>
         )}
@@ -957,5 +979,17 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     lineHeight: 16,
     paddingHorizontal: 10,
+  },
+  actionButton: {
+    backgroundColor: '#6366f1',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  actionButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });
